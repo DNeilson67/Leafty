@@ -316,4 +316,4 @@ const ProtectedRoute = ({}) => {
 };
 
 export default App;
-export const API_URL = "http://localhost:8000";
+export const API_URL = "https://leafty-be.vercel.app/";
