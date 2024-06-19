@@ -6,13 +6,10 @@ import trash from '@assets/icons/trash.svg';
 import IPI from '@assets/icons/IPI.svg';
 import If from '@assets/icons/Wat.svg';
 import Exc from '@assets/icons/Exc.svg';
-import AwaitingLeaves from '@assets/AwaitingLeaves.svg';
-import ExpiredWetLeaves from '@assets/ExpiredLeavesWet.svg';
-import ProcessedLeaves from '@assets/ProcessedLeaves.svg';
-import TotalCollectedWet from '@assets/TotalCollectedWet.svg';
+import LoadingStatic from '../../components/LoadingStatic';
+import LeavesPopup from '@components/Popups/LeavesPopup';
 import { API_URL } from '../../App';
 import dayjs from 'dayjs';
-import LeavesPopup from '@components/Popups/LeavesPopup';
 
 const header = 'Recently Gained Dry Leaves';
 
@@ -24,52 +21,20 @@ const columns = [
   { field: 'status', header: 'Status' }
 ];
 
-const stats = [
-  {
-    label: "Wasted Leaves",
-    value: "250",
-    unit: "Kg",
-    color: "#0F7275",
-    icon: ExpiredWetLeaves,
-    delay: 1
-  },
-  {
-    label: "Awaiting Leaves",
-    value: "243",
-    unit: "Kg",
-    color: "#C0CD30",
-    icon: AwaitingLeaves,
-    delay: 1.25
-  },
-  {
-    label: "Processed Leaves",
-    value: "243",
-    unit: "Kg",
-    color: "#79B2B7",
-    icon: ProcessedLeaves,
-    delay: 1.5
-  },
-  {
-    label: "Total Dry Leaves",
-    value: "1500",
-    unit: "Kg",
-    color: "#0F7275",
-    delay: 1.75
-  }
-];
-
 const AdminDryLeaves = () => {
   const [data, setData] = useState([]);
   const [selectedRowData, setSelectedRowData] = useState(null);
   const [editable, setEditable] = useState(false);
   const leavesModalRef = useRef(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const fetchData = async () => {
+      setLoading(true);
       try {
         const [leavesResponse, usersResponse] = await Promise.all([
           axios.get(`${API_URL}/dryleaves/get/`),
-          axios.get(`${API_URL}/user/get`) // Assuming we can fetch all users at once
+          axios.get(`${API_URL}/user/get`)
         ]);
 
         const users = usersResponse.data.reduce((acc, user) => {
@@ -80,15 +45,17 @@ const AdminDryLeaves = () => {
         const processedData = leavesResponse.data.map(item => ({
           id: item.DryLeavesID,
           name: users[item.UserID] || 'Unknown User',
-          weight: `${item.Processed_Weight} Kg`,
-          date: formatDate(item.ReceivedTime),
-          expiration: formatDate(addMonth(item.ReceivedTime)),
+          weight: `${item.Processed_Weight}`,
+          expiration: formatDate(item.Expiration),
+          expiredDate: item.Expiration,
           status: item.Status,
         }));
 
         setData(processedData);
       } catch (error) {
         console.error('Error fetching dry leaves data', error);
+      } finally {
+        setLoading(false);
       }
     };
 
@@ -97,10 +64,6 @@ const AdminDryLeaves = () => {
 
   const formatDate = (dateString) => {
     return dayjs(dateString).format('MM/DD/YYYY HH:mm');
-  };
-
-  const addMonth = (dateString) => {
-    return dayjs(dateString).add(1, 'month').format('MM/DD/YYYY HH:mm');
   };
 
   const handleDelete = async (id) => {
@@ -128,23 +91,28 @@ const AdminDryLeaves = () => {
     }
   };
 
+  const handleUpdate = (updatedData) => {
+    setData(data.map(item => item.id === updatedData.id ? updatedData : item));
+  };
+
   const statusBodyTemplate = (rowData) => {
     let backgroundColor;
     let textColor;
     let logo;
 
     const currentTime = new Date();
-    const isExpired = new Date(rowData.expiration) < currentTime;
+    const isExpired = new Date(rowData.expiredDate) < currentTime;
 
     if (rowData.status === "Awaiting") {
       if (isExpired) {
         backgroundColor = hexToRGBA("#D45D5D", 0.5);
         textColor = "#D45D5D";
         logo = <img src={Exc} alt="Logo" style={{ width: '20px', height: '20px' }} />;
-      } else{
-      backgroundColor = hexToRGBA("#A0C2B5", 0.5);
-      textColor = "#79B2B7";
-      logo = <img src={IPI} alt="Logo" style={{ width: '20px', height: '20px' }} />;}
+      } else {
+        backgroundColor = hexToRGBA("#A0C2B5", 0.5);
+        textColor = "#79B2B7";
+        logo = <img src={IPI} alt="Logo" style={{ width: '20px', height: '20px' }} />;
+      }
     }
     else if (rowData.status === "Processed") {
       backgroundColor = hexToRGBA("D4965D", 0.5);
@@ -176,7 +144,7 @@ const AdminDryLeaves = () => {
         className="rounded-md overflow-hidden"
       >
         <div className="flex items-center justify-center gap-2">
-          <span>{rowData.status === "Awaiting" && (new Date(rowData.expiration) < new Date()) ? "Expired" : rowData.status}</span>
+          <span>{rowData.status === "Awaiting" && (new Date(rowData.expiredDate) < new Date()) ? "Expired" : rowData.status}</span>
           {logo}
         </div>
       </div>
@@ -192,38 +160,13 @@ const AdminDryLeaves = () => {
     return `rgba(${r}, ${g}, ${b}, ${opacity})`;
   };
 
-  const handleEditSubmit = async (updatedData) => {
-    try {
-      const { id, name, weight, date, expiration } = updatedData;
-      await axios.put(`${API_URL}/dryleaves/update/${id}`, {
-        UserID: await getUserID(name), // Function to get user ID from name
-        Processed_Weight: weight.replace(' Kg', ''),
-        ReceivedTime: new Date(date).toISOString(),
-        ExpirationTime: new Date(expiration).toISOString(),
-      });
-
-      // Update the local state
-      setData((prevData) =>
-        prevData.map((item) =>
-          item.id === id ? { ...item, name, weight, date, expiration } : item
-        )
-      );
-      leavesModalRef.current.close();
-      setEditable(false);
-    } catch (error) {
-      console.error('Error updating dry leaves data', error);
-    }
-  };
-
-  const getUserID = async (username) => {
-    try {
-      const response = await axios.get(`${API_URL}/user/get_user_id/${username}`);
-      return response.data.UserID;
-    } catch (error) {
-      console.error('Error fetching user ID', error);
-      return null;
-    }
-  };
+  if (loading) {
+    return (
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
+        <LoadingStatic />
+      </div>
+    );
+  }
 
   return (
     <div className="container mx-auto w-full">
@@ -240,15 +183,16 @@ const AdminDryLeaves = () => {
       />
       {selectedRowData && (
         <LeavesPopup
+          key={selectedRowData.id} // Add key to force re-render
           weight={selectedRowData.weight}
           centra_name={selectedRowData.name}
-          collectedDate={selectedRowData.date}
-          expiredDate={selectedRowData.expiration}
+          expiredDate={selectedRowData.expiredDate}
           ref={leavesModalRef}
           dry_leaves={true}
+          status={selectedRowData.status}
           leavesid={selectedRowData.id}
           editable={editable}
-          onSubmit={handleEditSubmit}
+          onSubmit={handleUpdate}
         />
       )}
     </div>

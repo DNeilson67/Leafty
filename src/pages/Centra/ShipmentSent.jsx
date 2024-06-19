@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import WidgetContainer from '../../components/Cards/WidgetContainer';
 import CircularButton from '../../components/CircularButton';
 import Shipments from '../../assets/Shipments.svg';
@@ -8,71 +8,43 @@ import { useOutletContext } from 'react-router';
 import axios from 'axios';
 import { API_URL } from '../../App';
 import ShipmentStatus from '../../components/ShipmentStatus';
+import LoadingStatic from '@components/LoadingStatic';
 
 function ShipmentSent() {
     const [shipmentData, setShipmentData] = useState([]);
     const [selectedData, setSelectedData] = useState(null);
     const [users, setUsers] = useState([]);
+    const [loading, setLoading] = useState(true);
     const UserID = useOutletContext();
 
-    useEffect(() => {
-        const fetchData = async () => {
-            try {
-                const [shipmentsResponse, usersResponse] = await Promise.all([
-                    axios.get(`${API_URL}/shipment/get_by_user/${UserID}`),
-                    axios.get(`${API_URL}/user/get`)
-                ]);
-
-                const shipments = shipmentsResponse.data;
-
-                // Calculate shipment details concurrently
-                const updatedShipments = await Promise.all(shipments.map(async (shipment) => {
-                    const shipmentWeight = await calculateShipmentWeight(shipment);
-                    const courierName = shipment.CourierID ? await getCourierName(shipment.CourierID) : 'Unknown Courier';
-
-                    return {
-                        ...shipment,
-                        ShipmentWeight: shipmentWeight,
-                        CourierName: courierName
-                    };
-                }));
-
-                setShipmentData(updatedShipments);
-                setUsers(usersResponse.data);
-                console.log('Updated shipments:', updatedShipments);
-                console.log('Fetched users:', usersResponse.data);
-            } catch (error) {
-                console.error('Error fetching data:', error);
-                // Handle error (e.g., show a message to the user)
-            }
-        };
-
-        fetchData();
-    }, [UserID]);
-
-    const handleButtonClick = (item) => {
-        setSelectedData(item);
-        console.log('Selected shipment data:', item);
-        setTimeout(() => {
-            document.getElementById('ShipmentPopup').showModal();
-        }, 5);
-    };
-
-    const calculateShipmentWeight = async (shipment) => {
+    const fetchUsers = useCallback(async () => {
         try {
-            const totalFlourWeight = await Promise.all(shipment.FlourIDs.map(async (flourID) => {
+            const response = await axios.get(`${API_URL}/user/get`);
+            setUsers(response.data);
+            console.log('Fetched users:', response.data);
+        } catch (error) {
+            console.error('Error fetching users:', error);
+        }
+    }, []);
+
+    const calculateShipmentWeight = useCallback(async (flourIDs) => {
+        try {
+            const flourWeights = await Promise.all(flourIDs.map(async (flourID) => {
                 const flourResponse = await axios.get(`${API_URL}/flour/get/${flourID}`);
                 console.log(`Fetched flour details for flour ID ${flourID}:`, flourResponse.data);
                 return flourResponse.data?.Flour_Weight || 0;
             }));
-            return totalFlourWeight.reduce((sum, flourWeight) => sum + flourWeight, 0);
+            return flourWeights.reduce((sum, flourWeight) => sum + flourWeight, 0);
         } catch (error) {
             console.error('Error calculating shipment weight:', error);
             return 0;
         }
-    };
+    }, []);
 
-    const getCourierName = async (courierID) => {
+    const getCourierName = useCallback(async (courierID) => {
+        if (!courierID) {
+            return 'Unknown Courier';
+        }
         try {
             const courierResponse = await axios.get(`${API_URL}/courier/get/${courierID}`);
             console.log(`Fetched courier details for courier ID ${courierID}:`, courierResponse.data);
@@ -81,11 +53,70 @@ function ShipmentSent() {
             console.error(`Error fetching courier details for courier ID ${courierID}:`, error);
             return 'Unknown Courier';
         }
-    };
+    }, []);
 
-    const deliveredShipments = shipmentData.filter(item => !item.Check_in_Date && !item.Check_in_Quantity);
-    const verifiedShipments = shipmentData.filter(item => item.Check_in_Date && item.Check_in_Quantity && item.Rescalled_Weight === null);
-    const rescalledShipments = shipmentData.filter(item => item.Rescalled_Weight !== null);
+    const fetchShipments = useCallback(async () => {
+        try {
+            const response = await axios.get(`${API_URL}/shipment/get_by_user/${UserID}`);
+            const shipments = response.data;
+
+            const updatedShipments = await Promise.all(shipments.map(async (shipment) => {
+                const [shipmentWeight, courierName] = await Promise.all([
+                    calculateShipmentWeight(shipment.FlourIDs),
+                    getCourierName(shipment.CourierID)
+                ]);
+
+                return {
+                    ...shipment,
+                    ShipmentWeight: shipmentWeight,
+                    CourierName: courierName
+                };
+            }));
+
+            setShipmentData(updatedShipments);
+            console.log('Updated shipments:', updatedShipments);
+        } catch (error) {
+            console.error('Error fetching shipments:', error);
+        } finally {
+            setLoading(false);
+        }
+    }, [UserID, calculateShipmentWeight, getCourierName]);
+
+    useEffect(() => {
+        fetchUsers();
+        fetchShipments();
+    }, [fetchUsers, fetchShipments]);
+
+    const handleButtonClick = useCallback((item) => {
+        setSelectedData(item);
+        console.log('Selected shipment data:', item);
+        setTimeout(() => {
+            document.getElementById('ShipmentPopup').showModal();
+        }, 5);
+    }, []);
+
+    const deliveredShipments = useMemo(() => 
+        shipmentData.filter(item => !item.Check_in_Date && !item.Check_in_Quantity), 
+        [shipmentData]
+    );
+
+    const verifiedShipments = useMemo(() => 
+        shipmentData.filter(item => item.Check_in_Date && item.Check_in_Quantity && item.Rescalled_Weight === null), 
+        [shipmentData]
+    );
+
+    const rescalledShipments = useMemo(() => 
+        shipmentData.filter(item => item.Rescalled_Weight !== null), 
+        [shipmentData]
+    );
+
+    if (loading) {
+        return (
+            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '50vh' }}>
+                <LoadingStatic />
+            </div>
+        );
+    }
 
     return (
         <>
@@ -117,7 +148,8 @@ function ShipmentSent() {
                         </>
                     ),
                     defaultExpanded: true,
-                },{
+                },
+                {
                     summary: 'Verified Shipments',
                     details: () => (
                         <>
@@ -144,7 +176,8 @@ function ShipmentSent() {
                         </>
                     ),
                     defaultExpanded: false,
-                },{
+                },
+                {
                     summary: 'Re-scalled Shipments',
                     details: () => (
                         <>
@@ -170,7 +203,7 @@ function ShipmentSent() {
                             )) : <div>No shipments found.</div>}
                         </>
                     ),
-                    defaultExpanded: false
+                    defaultExpanded: false,
                 }
             ]} className="mt-3" />
             {selectedData && (
@@ -185,7 +218,7 @@ function ShipmentSent() {
                 />
             )}
         </>
-    )
+    );
 }
 
 export default ShipmentSent;

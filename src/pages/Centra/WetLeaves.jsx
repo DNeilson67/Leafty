@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import axios from 'axios';
 import { useOutletContext } from 'react-router-dom';
 import WidgetContainer from '../../components/Cards/WidgetContainer';
@@ -29,6 +29,7 @@ function WetLeaves() {
   const [processedLeavesData, setProcessedLeavesData] = useState([]);
   const [selectedData, setSelectedData] = useState(null);
   const [wetLeavesDailyLimit, setWetLeavesDailyLimit] = useState(30);
+  const [wetLeavesWeightToday, setWetLeavesWeightToday] = useState(0);
   const UserID = useOutletContext();
   const refModal = useRef();
 
@@ -155,34 +156,60 @@ function WetLeaves() {
     },
   ], [wetLeavesData, expiredLeavesData, thrownLeavesData, processedLeavesData]);
 
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const response = await axios.get(`${API_URL}/wetleaves/get_by_user/${UserID}`);
-        const data = response.data;
-        const currentTime = new Date();
-        setWetLeavesData(data.filter(item => new Date(item.Expiration) > currentTime && item.Status === "Awaiting"));
-        setExpiredLeavesData(data.filter(item => new Date(item.Expiration) < currentTime && item.Status === "Awaiting"));
-        setProcessedLeavesData(data.filter(item => item.Status === "Processed"));
-        setThrownLeavesData(data.filter(item => item.Status === "Thrown"));
-        console.log(data);
-      } catch (error) {
-        console.error('Error fetching wet leaves data:', error);
-      }
-    };
-
-    fetchData();
+  const fetchWetLeavesData = useCallback(async () => {
+    try {
+      const response = await axios.get(`${API_URL}/wetleaves/get_by_user/${UserID}`);
+      const data = response.data;
+      const currentTime = new Date();
+      setWetLeavesData(data.filter(item => new Date(item.Expiration) > currentTime && item.Status === "Awaiting"));
+      setExpiredLeavesData(data.filter(item => new Date(item.Expiration) < currentTime && item.Status === "Awaiting"));
+      setProcessedLeavesData(data.filter(item => item.Status === "Processed"));
+      setThrownLeavesData(data.filter(item => item.Status === "Thrown"));
+      console.log(data);
+    } catch (error) {
+      console.error('Error fetching wet leaves data:', error);
+    }
   }, [UserID]);
 
-  const handleButtonClick = (item) => {
+  const fetchWetLeavesWeightToday = useCallback(async () => {
+    try {
+      const response = await axios.get(`${API_URL}/wetleaves/sum_weight_today/${UserID}`);
+      setWetLeavesWeightToday(response.data.total_weight_today);
+    } catch (error) {
+      console.error('Error fetching sum wet leaves weight today:', error);
+    }
+  }, [UserID]);
+
+  useEffect(() => {
+    fetchWetLeavesData();
+    fetchWetLeavesWeightToday();
+
+    const intervalId = setInterval(() => {
+      fetchWetLeavesWeightToday();
+    }, 1000); // Update every 10 seconds
+
+    return () => clearInterval(intervalId);
+  }, [fetchWetLeavesData, fetchWetLeavesWeightToday]);
+
+  const handleButtonClick = useCallback((item) => {
     setSelectedData(item);
     setTimeout(() => {
       document.getElementById('AddLeaves').showModal();
     }, 5);
-  };
+  }, []);
 
   return (
     <>
+      <div className="flex justify-between p-1">
+        <WidgetContainer borderRadius="10px" className="w-full flex items-center">
+          <div className='flex flex-col ml-3 gap-2'>
+            <span className="font-montserrat text-base font-semibold leading-tight tracking-wide text-left">
+              Total Wet Leaves Weight Today: 
+            </span>
+            <span className='font-bold text-xl'>{wetLeavesWeightToday} Kg</span>
+          </div>
+        </WidgetContainer>
+      </div>
       <AccordionUsage accordions={accordions} />
       {selectedData && (
         <AddLeavesPopup
@@ -195,8 +222,7 @@ function WetLeaves() {
           showExpiredIn
         />
       )}
-      <Drawer WetLeaves Data={wetLeavesData} setData={setWetLeavesData} UserID={UserID} includeFourthSection={false} showThirdInput={false} firstText="Date" secondText="Weight" firstImgSrc={DateIcon} secondImgSrc={WeightLogo} />
-      <Popup />
+      <Drawer WetLeaves WetLeavesWeightToday={wetLeavesWeightToday} Data={wetLeavesData} setData={setWetLeavesData} UserID={UserID} includeFourthSection={false} showThirdInput={false} firstText="Date" secondText="Weight" firstImgSrc={DateIcon} secondImgSrc={WeightLogo} />
     </>
   );
 }

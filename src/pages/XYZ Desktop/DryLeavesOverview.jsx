@@ -50,14 +50,7 @@ function DryLeavesOverview() {
     ];
 
     const stats = [
-        {
-            label: "Awaiting Dry Leaves",
-            value: "243",
-            unit: "Kg",
-            color: "#C0CD30",
-            icon: AwaitingLeaves,
-            delay: 1
-        },
+        
         {
             label: "In-Processed Leaves",
             value: "243",
@@ -67,10 +60,18 @@ function DryLeavesOverview() {
             delay: 1.25
         },
         {
+            label: "Awaiting Dry Leaves",
+            value: "243",
+            unit: "Kg",
+            color: "#D2D681",
+            icon: AwaitingLeaves,
+            delay: 1
+        },
+        {
             label: "Expired Dry Leaves",
             value: "250",
             unit: "Kg",
-            color: "#D45D5D",
+            color: "#0F7275",
             icon: ExpiredDryLeaves,
             delay: 1.5
         },
@@ -78,7 +79,7 @@ function DryLeavesOverview() {
             label: "Total Collected Dry Leaves",
             value: "1500",
             unit: "Kg",
-            color: "#0F7275",
+            color: "#94C3B3",
             icon: TotalDryLeaves,
             delay: 1.75
         }
@@ -146,6 +147,10 @@ function DryLeavesOverview() {
     const Piedata = [100, 200, 700];
 
     const navigate = useNavigate();
+
+    if (loading){
+        return 
+    }
 
     return (
         <div className="flex flex-row gap-2">

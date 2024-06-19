@@ -6,13 +6,10 @@ import trash from '@assets/icons/trash.svg';
 import IPI from '@assets/icons/IPI.svg';
 import If from '@assets/icons/Wat.svg';
 import Exc from '@assets/icons/Exc.svg';
-import AwaitingLeaves from '@assets/AwaitingLeaves.svg';
-import ExpiredWetLeaves from '@assets/ExpiredLeavesWet.svg';
-import ProcessedLeaves from '@assets/ProcessedLeaves.svg';
-import TotalCollectedWet from '@assets/TotalCollectedWet.svg';
-import dayjs from 'dayjs';
+import LoadingStatic from '../../components/LoadingStatic';
 import LeavesPopup from '@components/Popups/LeavesPopup';
 import { API_URL } from '../../App';
+import dayjs from 'dayjs';
 
 const header = 'Recently Gained Powder';
 
@@ -24,53 +21,20 @@ const columns = [
   { field: 'status', header: 'Status' }
 ];
 
-const stats = [
-  {
-    label: "Wasted Leaves",
-    value: "250",
-    unit: "Kg",
-    color: "#0F7275",
-    icon: ExpiredWetLeaves,
-    delay: 1
-  },
-  {
-    label: "Awaiting Leaves",
-    value: "243",
-    unit: "Kg",
-    color: "#C0CD30",
-    icon: AwaitingLeaves,
-    delay: 1.25
-  },
-  {
-    label: "Processed Leaves",
-    value: "243",
-    unit: "Kg",
-    color: "#79B2B7",
-    icon: ProcessedLeaves,
-    delay: 1.5
-  },
-  {
-    label: "Total Powder",
-    value: "1500",
-    unit: "Kg",
-    color: "#0F7275",
-    delay: 1.75
-  }
-];
-
 const AdminPowder = () => {
   const [data, setData] = useState([]);
   const [selectedRowData, setSelectedRowData] = useState(null);
   const [editable, setEditable] = useState(false);
-  const leavesModalRef = useRef(null);
   const [loading, setLoading] = useState(true);
+  const leavesModalRef = useRef(null);
 
   useEffect(() => {
     const fetchData = async () => {
+      setLoading(true);
       try {
         const [flourResponse, usersResponse] = await Promise.all([
-          axios.get(`${API_URL}/flour/get`),
-          axios.get(`${API_URL}/user/get`) // Assuming we can fetch all users at once
+          axios.get(`${API_URL}/flour/get`), // Adjusted API endpoint for flour data
+          axios.get(`${API_URL}/user/get`)
         ]);
 
         const users = usersResponse.data.reduce((acc, user) => {
@@ -81,33 +45,30 @@ const AdminPowder = () => {
         const processedData = flourResponse.data.map(item => ({
           id: item.FlourID,
           name: users[item.UserID] || 'Unknown User',
-          weight: `${item.Flour_Weight} Kg`,
+          weight: `${item.Flour_Weight}`, // Adjust field name and formatting as needed
           expiration: formatDate(item.Expiration),
-          DryLeavesID: item.DryLeavesID,
-          status: item.Status,
+          expiredDate: item.Expiration,
+          status: item.Status
         }));
 
         setData(processedData);
       } catch (error) {
         console.error('Error fetching flour data', error);
+      } finally {
+        setLoading(false);
       }
     };
 
     fetchData();
-    setLoading(false);
   }, []);
 
   const formatDate = (dateString) => {
     return dayjs(dateString).format('MM/DD/YYYY HH:mm');
   };
 
-  const addMonth = (dateString) => {
-    return dayjs(dateString).add(1, 'month').format('MM/DD/YYYY HH:mm');
-  };
-
   const handleDelete = async (id) => {
     try {
-      await axios.delete(`${API_URL}/flour/delete/${id}`); // Placeholder API URL
+      await axios.delete(`${API_URL}/flour/delete/${id}`); // Adjusted API endpoint for delete operation
       setData(data.filter(item => item.id !== id));
     } catch (error) {
       console.error('Error deleting powder data', error);
@@ -130,13 +91,17 @@ const AdminPowder = () => {
     }
   };
 
+  const handleUpdate = (updatedData) => {
+    setData(data.map(item => item.id === updatedData.id ? updatedData : item));
+  };
+
   const statusBodyTemplate = (rowData) => {
     let backgroundColor;
     let textColor;
     let logo;
 
     const currentTime = new Date();
-    const isExpired = new Date(rowData.expiration) < currentTime;
+    const isExpired = new Date(rowData.expiredDate) < currentTime;
 
     if (rowData.status === "Awaiting") {
       if (isExpired) {
@@ -162,7 +127,6 @@ const AdminPowder = () => {
       textColor = "#000000";
     }
 
-
     const dynamicWidth = "150px";
     const dynamicHeight = "35px";
 
@@ -172,12 +136,15 @@ const AdminPowder = () => {
           backgroundColor,
           color: textColor,
           width: dynamicWidth,
-          height: dynamicHeight
+          height: dynamicHeight,
+          display: "flex",
+          justifyContent: "center",
+          alignItems: "center"
         }}
-        className="flex items-center justify-center rounded-md overflow-hidden"
+        className="rounded-md overflow-hidden"
       >
-        <div className="flex items-center gap-2">
-          <span>{rowData.status}</span>
+        <div className="flex items-center justify-center gap-2">
+          <span>{rowData.status === "Awaiting" && isExpired ? "Expired" : rowData.status}</span>
           {logo}
         </div>
       </div>
@@ -193,38 +160,14 @@ const AdminPowder = () => {
     return `rgba(${r}, ${g}, ${b}, ${opacity})`;
   };
 
-  const handleEditSubmit = async (updatedData) => {
-    try {
-      const { weight } = updatedData;
-      await axios.put(`${API_URL}/flour/put/${flour_id}`, { // Placeholder API URL
-        UserID: await getUserID(name), // Function to get user ID from name
-        Processed_Weight: weight.replace(' Kg', ''),
-        ReceivedTime: new Date(date).toISOString(),
-        ExpirationTime: new Date(expiration).toISOString()
-      });
 
-      // Update the local state
-      setData((prevData) =>
-        prevData.map((item) =>
-          item.id === id ? { ...item, name, weight, date, expiration } : item
-        )
-      );
-      leavesModalRef.current.close();
-      setEditable(false);
-    } catch (error) {
-      console.error('Error updating powder data', error);
-    }
-  };
-
-  const getUserID = async (username) => {
-    try {
-      const response = await axios.get(`{API_URL}/user/get_user_id/${username}`); // Placeholder API URL
-      return response.data.UserID;
-    } catch (error) {
-      console.error('Error fetching user ID', error);
-      return null;
-    }
-  };
+  if (loading) {
+    return (
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
+        <LoadingStatic />
+      </div>
+    );
+  }
 
   return (
     <div className="container mx-auto w-full">
@@ -241,15 +184,16 @@ const AdminPowder = () => {
       />
       {selectedRowData && (
         <LeavesPopup
+          key={selectedRowData.id} // Add key to force re-render
           weight={selectedRowData.weight}
           centra_name={selectedRowData.name}
-          collectedDate={selectedRowData.date}
-          expiredDate={selectedRowData.expiration}
+          expiredDate={selectedRowData.expiredDate}
           ref={leavesModalRef}
-          dry_leaves={true}
+          powder={true}
+          status={selectedRowData.status}
           leavesid={selectedRowData.id}
           editable={editable}
-          onSubmit={handleEditSubmit}
+          onSubmit={handleUpdate}
         />
       )}
     </div>

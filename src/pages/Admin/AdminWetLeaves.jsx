@@ -25,8 +25,6 @@ const columns = [
   { field: 'status', header: 'Status' }
 ];
 
-
-
 const AdminWetLeaves = () => {
   const [data, setData] = useState([]);
   const [selectedRowData, setSelectedRowData] = useState(null);
@@ -37,8 +35,12 @@ const AdminWetLeaves = () => {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const response = await axios.get(`${API_URL}/wetleaves/get`);
-        const usersResponse = await axios.get(`${API_URL}/user/get`); // Assuming we can fetch all users at once
+        setLoading(true); // Set loading to true when fetching data
+        const [response, usersResponse] = await Promise.all([
+          axios.get(`${API_URL}/wetleaves/get`),
+          axios.get(`${API_URL}/user/get`)
+        ]);
+
         const users = usersResponse.data.reduce((acc, user) => {
           acc[user.UserID] = user.Username;
           return acc;
@@ -49,18 +51,19 @@ const AdminWetLeaves = () => {
           name: users[item.UserID] || 'Unknown User',
           weight: item.Weight,
           expiration: formatDate(item.Expiration),
+          expiredDate: item.Expiration,
           status: item.Status,
         }));
 
         setData(processedData);
+        setLoading(false); // Set loading to false after data is fetched
       } catch (error) {
         console.error('Error fetching wet leaves data', error);
+        setLoading(false); // Ensure loading is set to false on error
       }
     };
 
     fetchData();
-    setTimeout(2500);
-    setLoading(false)
   }, []);
 
   const formatDate = (dateString) => {
@@ -92,11 +95,14 @@ const AdminWetLeaves = () => {
     }
   };
 
+  const handleUpdate = (updatedData) => {
+    setData(data.map(item => item.id === updatedData.id ? updatedData : item));
+  };
+
   const statusBodyTemplate = (rowData) => {
     let backgroundColor;
     let textColor;
     let logo;
-
 
     const currentTime = new Date();
     const isExpired = new Date(rowData.expiration) < currentTime;
@@ -176,14 +182,16 @@ const AdminWetLeaves = () => {
       />
       {selectedRowData && (
         <LeavesPopup
+          status={selectedRowData.status}
           weight={selectedRowData.weight}
           centra_name={selectedRowData.name}
           collectedDate={selectedRowData.date}
-          expiredDate={selectedRowData.expiration}
+          expiredDate={selectedRowData.expiredDate}
           ref={leavesModalRef}
           wet_leaves={true}
           leavesid={selectedRowData.id}
           editable={editable}
+          onSubmit={handleUpdate}
         />
       )}
     </div>

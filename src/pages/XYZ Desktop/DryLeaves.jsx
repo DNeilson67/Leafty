@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import LeavesPopup from "@components/Popups/LeavesPopup"
 import 'daisyui/dist/full.css';
 import { motion } from "framer-motion";
 import StatsContainer from "@components/Cards/StatsContainer";
@@ -12,6 +13,7 @@ import ExpiredDryLeaves from '@assets//ExpiredDryLeaves.svg';
 import ProcessedLeaves from '@assets/In-ProcessLeaves.svg';
 import TotalDryLeaves from '@assets/TotalDryLeaves.svg';
 import "primereact/resources/themes/lara-light-cyan/theme.css";
+import LoadingStatic from '../../components/LoadingStatic';
 import axios from 'axios';  // Ensure you have axios installed and imported
 import dayjs from 'dayjs';
 import { API_URL } from "../../App"; // Adjust the import path to your configuration file
@@ -28,6 +30,7 @@ const columns = [
 
 const DryLeaves = () => {
   const [dryLeaves, setDryLeaves] = useState([]);
+  const [selectedRowData, setSelectedRowData] = useState(null);
   const [users, setUsers] = useState([]);
   const [stats, setStats] = useState({
     awaiting: 0,
@@ -35,6 +38,8 @@ const DryLeaves = () => {
     wasted: 0,
     total: 0
   });
+
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const fetchDryLeaves = async () => {
@@ -50,21 +55,15 @@ const DryLeaves = () => {
           processed: 0,
           wasted: 0,
           total: 0
-
         };
-
 
         dryLeavesResponse.data.forEach(leaf => {
           stats.total += leaf.Processed_Weight;
-          if ((new Date(leaf.Expiration) < new Date()) == true) {
+          if (new Date(leaf.Expiration) < new Date() && leaf.Status === 'Awaiting') {
             stats.wasted += leaf.Processed_Weight;
-
-          }
-          else if (leaf.Status === 'Processed') {
+          } else if (leaf.Status === 'Processed') {
             stats.processed += leaf.Processed_Weight;
-          }
-
-          else if (leaf.Status === 'Awaiting') {
+          } else if (leaf.Status === 'Awaiting') {
             stats.awaiting += leaf.Processed_Weight;
           }
         });
@@ -72,11 +71,14 @@ const DryLeaves = () => {
         setStats(stats);
       } catch (error) {
         console.error('Error fetching data:', error);
+      } finally {
+        setLoading(false); // Move setLoading(false) inside the finally block
       }
     };
 
     fetchDryLeaves();
   }, []);
+
 
   const formatDate = (dateString) => {
     return dayjs(dateString).format('MM/DD/YYYY HH:mm');
@@ -93,8 +95,9 @@ const DryLeaves = () => {
       id: leaf.DryLeavesID,
       name: user ? user.Username : 'Unknown',
       weight: leaf.Processed_Weight,
-      status: new Date(leaf.Expiration) < new Date() ? "Expired" : leaf.Status,
+      status: leaf.Status,
       expiration: formatDate(leaf.Expiration),
+      expiredDate: leaf.Expiration,
     };
   });
 
@@ -112,7 +115,6 @@ const DryLeaves = () => {
     let backgroundColor;
     let textColor;
     let logo;
-
 
     const currentTime = new Date();
     const isExpired = new Date(rowData.expiration) < currentTime;
@@ -171,9 +173,26 @@ const DryLeaves = () => {
     return `rgba(${r}, ${g}, ${b}, ${opacity})`;
   };
 
+
+
+  const leavesModalRef = useRef(null);
+
+  const handleDetailsClick = (rowData) => {
+    setSelectedRowData(rowData);
+    if (leavesModalRef.current) {
+      setTimeout(() => leavesModalRef.current.showModal(), 100);
+    }
+  };
+
+  if (loading) {
+    return <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
+      <LoadingStatic />
+    </div>;
+  }
+
   return (
     <div className="container mx-auto w-full">
-      <TableComponent data={mergedData} header={header} columns={columns} ColorConfig={statusBodyTemplate} admin={false} />
+      <TableComponent data={mergedData} header={header} columns={columns} ColorConfig={statusBodyTemplate} admin={false} onDetailsClick={handleDetailsClick} />
       <div className="flex flex-wrap gap-4 justify-stretch">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -184,7 +203,7 @@ const DryLeaves = () => {
         >
           <StatsContainer
             label="Awaiting Dry Leaves"
-            value={stats.awaiting}
+            value={stats.awaiting || "0"}
             unit="Kg"
             description=""
             color="#C0CD30"
@@ -201,7 +220,7 @@ const DryLeaves = () => {
         >
           <StatsContainer
             label="In-Processed Leaves"
-            value={stats.processed}
+            value={stats.processed || "0"}
             unit="Kg"
             description=""
             color="#79B2B7"
@@ -218,7 +237,7 @@ const DryLeaves = () => {
         >
           <StatsContainer
             label="Expired Dry Leaves"
-            value={stats.wasted}
+            value={stats.wasted || "0"}
             unit="Kg"
             description=""
             color="#0F7275"
@@ -235,7 +254,7 @@ const DryLeaves = () => {
         >
           <StatsContainer
             label="Total Collected Dry Leaves"
-            value={stats.total}
+            value={stats.total || "0"}
             unit="Kg"
             description=""
             color="#0F7275"
@@ -244,6 +263,18 @@ const DryLeaves = () => {
           />
         </motion.div>
       </div>
+      {selectedRowData && (
+        <LeavesPopup
+          status={selectedRowData.status}
+          weight={selectedRowData.weight}
+          centra_name={selectedRowData.name}
+          expiredDate={selectedRowData.expiredDate}
+          ref={leavesModalRef}
+          dry_leaves={true}
+          leavesid={selectedRowData.id}
+          editable={false}
+        />
+      )}
     </div>
   );
 };
